@@ -1,0 +1,5 @@
+result
+.snapshots/
+*.dump
+*.sql
+.*.nixops*
