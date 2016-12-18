@@ -1,38 +1,19 @@
 # https://craftcms.com/docs/requirements
 # https://craftcms.com/docs/installing
 
-{ allowHttps ? false
-, domain ? "happylager.dev"
+{ allowHttps
+, domain
 }:
 let
   rootUrl = (if allowHttps then "https" else "http") + "://" + domain;
 
   traced = x: builtins.trace x x;
 
-  wwwUser = "craft";
-
-  writeableDirStr      = "/var/lib/phpfpm/happy-lager-craft-cms-demo";
-  writeableOrigDirName = "_writeable";
-
-  # Copy the writeable contents of the app to a writeable dir if not already done
-  startupScript = pkgs: app: ''
-    #!${pkgs.bash}/bin/bash
-
-    if [ ! -d "${writeableDirStr}" ]; then
-
-      mkdir -p "${writeableDirStr}"
-      writeable_orig_dir="${app}/${writeableOrigDirName}"
-      for thing in $( ls "$writeable_orig_dir" ); do
-        cp -r "$writeable_orig_dir/$thing" "${writeableDirStr}"
-      done
-
-      chown -R ${wwwUser}:${wwwUser} "${writeableDirStr}"
-      chmod -R 0744 "${writeableDirStr}"
-
-    fi
-  '';
-
   phpFpmListen = "/run/phpfpm/craft-pool.sock";
+
+  defaultDbSetup = pkgs: pkgs.writeText "default-db-setup.sql" ''
+    SET NAMES utf8mb4;
+  '';
 
 in {
   network = {
@@ -44,8 +25,11 @@ in {
     # This is not being used but can be useful for testing/development:
     phpTestIndex = pkgs.writeTextDir "index.php" "<?php var_export($_SERVER)?>";
 
-    app = pkgs.callPackage ./happy-lager.nix {
-      inherit writeableDirStr writeableOrigDirName;
+    app = pkgs.callPackage ./happy-lager.nix {};
+
+    nginxConfig = import ./nginx-config.nix {
+      inherit config domain phpFpmListen;
+      appRoot = "${app.package}/public";
     };
   in {
     networking = {
@@ -57,86 +41,13 @@ in {
       gzip unzip nix-repl php vim zip
     ];
 
-    users = {
-      extraGroups.${wwwUser} = {};
-      extraUsers.${wwwUser} = {
-        extraGroups = [wwwUser];
-      };
-    };
-
     nixpkgs.config = {
       allowUnfree = true;
     };
 
-    services.nginx = let nginxPkg = pkgs.nginx; in {
-      enable     = true;
-      user       = wwwUser;
-      group      = wwwUser;
-      package    = nginxPkg;
-
-      # https://www.nginx.com/resources/wiki/start/topics/examples/phpfcgi/
-      httpConfig = ''
-        server {
-          server_name ${domain};
-          listen 80;
-          index index.html index.htm index.php;
-
-          root "${app}/public";
-
-          # Root directory location handler
-          location / {
-            try_files $uri $uri/ /index.php?$query_string;
-          }
-
-          # Localized sites, hat tip to Johannes -- https://gist.github.com/johanneslamers/f6d2bc0d7435dca130fc
-
-          # If you are creating a localized site as per: https://craftcms.com/docs/localization-guide
-          # the directives here will help you handle the locale redirection so that requests will
-          # be routed through the appropriate index.php wherein you set the `CRAFT_LOCALE`
-
-          # Enable this by un-commenting it, and changing the language codes as appropriate
-          # Add a new location @XXrewrites and location /XX/ block for each language that
-          # you need to support
-
-          #location @enrewrites {
-          #  rewrite ^/en/(.*)$ /en/index.php?p=$1? last;
-          #}
-          #
-          #location /en/ {
-          #  try_files $uri $uri/ @enrewrites;
-          #}
-
-          # Craft-specific location handlers to ensure AdminCP requests route through index.php
-          # If you change your `cpTrigger`, change it here as well
-          location ^~ /admin {
-            try_files $uri $uri/ /index.php?$query_string;
-          }
-          location ^~ /cpresources {
-            try_files $uri $uri/ /index.php?$query_string;
-          }
-
-          # PHP-FPM configuration
-          location ~ [^/]\.php(/|$) {
-            fastcgi_split_path_info ^(.+\.php)(/.+)$;
-            fastcgi_pass unix:${phpFpmListen};
-            fastcgi_index index.php;
-
-            include ${nginxPkg}/conf/fastcgi.conf;
-            fastcgi_param PATH_INFO       $fastcgi_path_info;
-            fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
-
-            # Mitigate https://httpoxy.org/ vulnerabilities
-            fastcgi_param HTTP_PROXY "";
-
-            fastcgi_intercept_errors off;
-            fastcgi_buffer_size 16k;
-            fastcgi_buffers 4 16k;
-            fastcgi_connect_timeout 300;
-            fastcgi_send_timeout 300;
-            fastcgi_read_timeout 300;
-          }
-        }
-      '';
+    services.nginx = {
+      enable = true;
+      httpConfig = traced (if allowHttps then nginxConfig.secure else nginxConfig.insecure);
     };
 
     services.mysql = {
@@ -156,7 +67,7 @@ in {
       initialDatabases = [
         {
           name   = "happylager";
-          schema = "${app}/happylager.sql";
+          schema = "${app.package}/happylager.sql";
         }
       ];
     };
@@ -170,11 +81,11 @@ in {
       pools.craft-pool = {
         listen = phpFpmListen;
         extraConfig = ''
-          user  = ${wwwUser}
-          group = ${wwwUser}
+          user  = ${config.services.nginx.user}
+          group = ${config.services.nginx.group}
 
-          listen.owner = ${wwwUser}
-          listen.group = ${wwwUser}
+          listen.owner = ${config.services.nginx.user}
+          listen.group = ${config.services.nginx.group}
           listen.mode = 0660
 
           pm = dynamic
@@ -187,13 +98,13 @@ in {
       };
     };
 
-    systemd.services.init-writeable-dirs = {
+    systemd.services.init-writeable-paths = {
       description   = "Initialize writeable directories for the app";
       wantedBy      = [ "multi-user.target" "phpfpm" ];
       after         = [ "network.target" ];
       serviceConfig = {
-        Type = "oneshot";
-        ExecStart = pkgs.writeScript "init-writeable-dirs" (startupScript pkgs app);
+        Type      = "oneshot";
+        ExecStart = app.initScript;
       };
     };
   } // (
