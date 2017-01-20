@@ -27,17 +27,18 @@ Create a service account that will run the deployment:
 
 Configuring deployment:
 
-  1. Copy `deploy/gce.keys.nix.sample` to `deploy/gce.keys.nix`.
+  1. Copy `server/gce.keys.nix.sample` to `server/gce.keys.nix`.
   2. Replace the `...` with your project and credentials.
 
 
 ### Deploying
 
-To deploy to production, you will use similar steps as deploying to VirtualBox:
+To deploy to production, you will use similar steps as deploying to VirtualBox (see the README):
 
-  1. `deploy/manage create -d prod '<logical.nix>' '<physical.gce.prod.nix>'`
-  2. `deploy/manage export -d prod > deploy/prod.nixops-exported`
-  3. `deploy/manage deploy -d prod`
+  1. Configure `server/physical.gce.prod.nix` to your preferences.
+  2. `deploy/manage create -d prod '<server/logical.nix>' '<server/physical.gce.prod.nix>'`
+  3. `deploy/manage export -d prod > deploy/prod.nixops-exported`
+  4. `deploy/manage deploy -d prod`
 
 It may take a long time to build the server and upload all the dependencies.
 

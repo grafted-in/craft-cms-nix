@@ -27,7 +27,7 @@ With this setup, you can easily deploy your site to one or more servers with min
 
 Create a VirtualBox deployment:
 
-  1. `deploy/manage create -d vbox '<logical.nix>' '<physical.vbox.nix>'`
+  1. `deploy/manage create -d vbox '<server/logical.vbox.nix>' '<server/physical.vbox.nix>'`
   2. `deploy/manage deploy -d vbox`
 
 **Notes:**
@@ -39,11 +39,21 @@ Create a VirtualBox deployment:
 You should then be able to open the IP of the VM in your browser and test it. If you don't know the IP, run `deploy/manage info -d vbox`.
 
 
+### Troubleshooting
+
+  * If the state of your VirtualBox VM changes in a way that `nixops` didn't notice, your deployments may fail. Try running `deploy/manage deploy -d vbox --check` (using the `--check` flag) to tell `nixops` to reassess the state of the machine.
+  * Sometimes VirtualBox will give your machine a new IP. If this happens, `nixops` (i.e. the `manage` script) may fail to connect to your machine via SSH. If this happens, remove the line with the old IP from your `~/.ssh/known_hosts` file and try again with the `--check` flag.
+
+
+
 ## Deploying to Real Servers
 
-With this setup you can deploy to any PaaS/IaaS service supported by `nixops`. Right now we only have prewritten configuration for Google Cloud Compute's [Google Compute Engine (GCE)](https://cloud.google.com/compute/). We plan to add more (such as AWS) in the future. If you want to do it yourself and understand Nix, the work to add this configuration is minimal. Pull requests welcome!
+With this setup you can deploy to any PaaS/IaaS service supported by `nixops`. Right now this repository contains prewritten configurations for
 
-Read `DEPLOY-GCE.md` to learn about GCE deployments.
+  * Google Cloud Compute's [Google Compute Engine (GCE)](https://cloud.google.com/compute/) - see `DEPLOY-GCE.md`.
+  * [DigitalOcean](https://www.digitalocean.com/) - see `DEPLOY-DIGITAL-OCEAN.md`.
+
+We plan to add more (such as AWS) in the future. If you want to do it yourself and understand Nix, the work to add this configuration is minimal. Pull requests welcome!
 
 
 ## Acknowledgements
@@ -52,4 +62,5 @@ Read `DEPLOY-GCE.md` to learn about GCE deployments.
     * https://github.com/nystudio107/nginx-craft
     * https://github.com/nystudio107/craft-scripts
     * https://nystudio107.com/blog/hardening-craft-cms-permissions
+    * https://craftcms.com/support/remove-index.php
   * Special thanks to @khalwat

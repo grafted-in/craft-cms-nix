@@ -1,0 +1,3 @@
+{
+  machineName = "craft-main";
+}
